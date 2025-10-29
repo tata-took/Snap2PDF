@@ -71,7 +71,7 @@ class KindleAutomation:
 
     def turn_page(self, direction: str = "right") -> bool:
         """
-        Turn page in Kindle by pressing arrow key.
+        Turn page in Kindle by clicking screen edge.
 
         Args:
             direction: "right" for next page, "left" for previous page
@@ -80,9 +80,19 @@ class KindleAutomation:
             True if successful, False otherwise
         """
         try:
-            key = "right" if direction == "right" else "left"
-            pyautogui.press(key)
-            logger.info(f"Pressed {key} arrow key")
+            # Get screen size
+            screen_width, screen_height = pyautogui.size()
+            center_y = screen_height // 2
+
+            if direction == "right":
+                # Click right edge
+                click_x = screen_width - 10
+            else:
+                # Click left edge
+                click_x = 10
+
+            pyautogui.click(click_x, center_y)
+            logger.info(f"Clicked {direction} edge at ({click_x}, {center_y})")
             return True
         except Exception as e:
             logger.error(f"Failed to turn page: {e}")

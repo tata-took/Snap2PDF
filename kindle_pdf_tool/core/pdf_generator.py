@@ -233,3 +233,92 @@ class PDFGenerator:
             Settings dictionary
         """
         return COMPRESSION_LEVELS.get(level, COMPRESSION_LEVELS[3])
+
+    def estimate_file_size_max_quality(self, page_count: int) -> float:
+        """
+        Estimate file size with maximum quality (no compression).
+
+        Args:
+            page_count: Number of pages
+
+        Returns:
+            Estimated size in MB
+        """
+        # Max quality: approximately 1 MB per page
+        return page_count * 1.0
+
+    def create_split_pdfs(
+        self,
+        image_paths: List[Path],
+        base_output_path: Path,
+        max_size_mb: float
+    ) -> Tuple[bool, List[Path], List[float]]:
+        """
+        Create multiple PDFs split by file size at maximum quality.
+
+        Args:
+            image_paths: List of image paths (in order)
+            base_output_path: Base output path (e.g., output.pdf)
+            max_size_mb: Maximum size per PDF file in MB
+
+        Returns:
+            Tuple of (success: bool, pdf_paths: List[Path], sizes: List[float])
+        """
+        if not image_paths:
+            logger.error("No images to create PDF")
+            return False, [], []
+
+        try:
+            sorted_images = sorted(image_paths, key=lambda p: p.name)
+
+            # Calculate approximate size per image at max quality
+            # Estimate ~1 MB per image at maximum quality
+            est_size_per_image = 1.0  # MB
+
+            # Calculate how many images per PDF
+            images_per_pdf = max(1, int(max_size_mb / est_size_per_image))
+
+            logger.info(f"Splitting {len(sorted_images)} images into PDFs of ~{images_per_pdf} images each")
+            logger.info(f"Target size: {max_size_mb} MB per PDF")
+
+            pdf_paths = []
+            pdf_sizes = []
+
+            # Split images into chunks
+            for chunk_idx in range(0, len(sorted_images), images_per_pdf):
+                chunk_images = sorted_images[chunk_idx:chunk_idx + images_per_pdf]
+
+                # Generate output filename
+                if len(sorted_images) <= images_per_pdf:
+                    # Only one PDF needed
+                    output_path = base_output_path
+                else:
+                    # Multiple PDFs: output_1.pdf, output_2.pdf, etc.
+                    pdf_number = (chunk_idx // images_per_pdf) + 1
+                    stem = base_output_path.stem
+                    suffix = base_output_path.suffix
+                    parent = base_output_path.parent
+                    output_path = parent / f"{stem}_{pdf_number}{suffix}"
+
+                logger.info(f"Creating PDF {len(pdf_paths) + 1} with {len(chunk_images)} images")
+
+                # Create PDF with maximum quality (no compression)
+                with open(output_path, "wb") as f:
+                    f.write(img2pdf.convert([str(img) for img in chunk_images]))
+
+                # Get file size
+                file_size_mb = output_path.stat().st_size / (1024 * 1024)
+
+                pdf_paths.append(output_path)
+                pdf_sizes.append(file_size_mb)
+
+                logger.info(f"Created: {output_path.name} ({file_size_mb:.2f} MB)")
+
+            total_size = sum(pdf_sizes)
+            logger.info(f"Split complete: {len(pdf_paths)} PDF(s), total {total_size:.2f} MB")
+
+            return True, pdf_paths, pdf_sizes
+
+        except Exception as e:
+            logger.error(f"Failed to create split PDFs: {e}")
+            return False, [], []

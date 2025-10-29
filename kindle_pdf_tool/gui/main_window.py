@@ -47,7 +47,7 @@ class MainWindow(ctk.CTk):
         super().__init__()
 
         # Window settings
-        self.title("Kindle PDF Converter v1.2")
+        self.title("Kindle PDF Converter v1.3")
         self.geometry("680x750")
         self.resizable(False, False)
 
@@ -277,54 +277,54 @@ class MainWindow(ctk.CTk):
         pdf_section = CompactSection(main_frame, "PDF設定")
         pdf_section.pack(fill="x", padx=5, pady=3)
 
+        # Quality info
         row3 = ctk.CTkFrame(pdf_section, fg_color="transparent")
         row3.pack(fill="x", padx=10, pady=2)
 
-        ctk.CTkLabel(row3, text="圧縮:", width=50, anchor="w", font=JP_FONT).pack(side="left", padx=(0, 5))
-
-        self.compression_slider = ctk.CTkSlider(
+        ctk.CTkLabel(
             row3,
-            from_=1,
-            to=5,
-            width=250,
-            command=self._on_compression_change
-        )
-        self.compression_slider.set(self.config.compression)
-        self.compression_slider.pack(side="left", padx=(0, 8))
+            text="画質: 最高画質（圧縮なし）",
+            font=JP_FONT_BOLD,
+            text_color="green"
+        ).pack(side="left")
 
-        self.compression_label = ctk.CTkLabel(row3, text=f"{self.config.compression}", width=30, font=JP_FONT)
-        self.compression_label.pack(side="left", padx=(0, 5))
-
-        ctk.CTkLabel(row3, text="(1:高画質 5:小容量)", font=JP_FONT_SMALL, text_color="gray").pack(side="left")
-
-        # Target size
+        # Target size (for splitting)
         row4 = ctk.CTkFrame(pdf_section, fg_color="transparent")
-        row4.pack(fill="x", padx=10, pady=2)
+        row4.pack(fill="x", padx=10, pady=5)
 
-        self.target_size_var = ctk.BooleanVar(value=self.config.target_size_enabled)
+        self.target_size_var = ctk.BooleanVar(value=True)  # Always enabled
         target_size_check = ctk.CTkCheckBox(
             row4,
-            text="目標サイズ:",
+            text="PDFサイズ上限:",
             variable=self.target_size_var,
             command=self.on_target_size_toggle,
             font=JP_FONT
         )
         target_size_check.pack(side="left", padx=(0, 5))
 
-        self.target_size_entry = ctk.CTkEntry(row4, width=60)
+        self.target_size_entry = ctk.CTkEntry(row4, width=70)
         self.target_size_entry.insert(0, str(self.config.target_size_mb))
         self.target_size_entry.pack(side="left", padx=(0, 3))
 
-        ctk.CTkLabel(row4, text="MB", font=JP_FONT).pack(side="left", padx=(0, 10))
+        ctk.CTkLabel(row4, text="MB/ファイル", font=JP_FONT).pack(side="left", padx=(0, 5))
 
-        self.priority_var = ctk.StringVar(value=self.config.size_priority)
-        ctk.CTkRadioButton(row4, text="画質優先", variable=self.priority_var, value="quality", font=JP_FONT).pack(side="left", padx=5)
-        ctk.CTkRadioButton(row4, text="サイズ優先", variable=self.priority_var, value="size", font=JP_FONT).pack(side="left")
-
+        # Split explanation
         row5 = ctk.CTkFrame(pdf_section, fg_color="transparent")
         row5.pack(fill="x", padx=10, pady=2)
 
-        self.pdf_estimated_size_label = ctk.CTkLabel(row5, text="💡 推定: -- MB", font=JP_FONT, text_color="gray")
+        ctk.CTkLabel(
+            row5,
+            text="※ サイズ超過時は自動的に複数PDFに分割（output_1.pdf, output_2.pdf...）",
+            font=("Yu Gothic UI", 9),
+            text_color="gray",
+            wraplength=520
+        ).pack(side="left")
+
+        # Estimated info
+        row6 = ctk.CTkFrame(pdf_section, fg_color="transparent")
+        row6.pack(fill="x", padx=10, pady=2)
+
+        self.pdf_estimated_size_label = ctk.CTkLabel(row6, text="💡 推定: -- MB", font=JP_FONT, text_color="gray")
         self.pdf_estimated_size_label.pack(side="left")
 
         # === Output ===
@@ -369,11 +369,6 @@ class MainWindow(ctk.CTk):
         )
         self.pdf_status.pack(anchor="w", padx=10, pady=3)
 
-    def _on_compression_change(self, value):
-        """Handle compression slider change."""
-        int_value = int(value)
-        self.compression_label.configure(text=str(int_value))
-        self.on_compression_change(int_value)
 
     def load_config_to_ui(self):
         """Load configuration to UI elements."""
@@ -403,10 +398,10 @@ class MainWindow(ctk.CTk):
             screenshot_count=int(self.screenshot_count_entry.get()),
             screenshot_interval=float(self.screenshot_interval_entry.get()),
             save_mode="all",
-            compression=int(self.compression_slider.get()),
+            compression=1,  # Always maximum quality
             target_size_enabled=self.target_size_var.get(),
             target_size_mb=int(self.target_size_entry.get()),
-            size_priority=self.priority_var.get(),
+            size_priority="size",  # Always split by size
             last_output_path=self.pdf_output_entry.get()
         )
 
@@ -448,9 +443,22 @@ class MainWindow(ctk.CTk):
             )
 
             if count > 0:
-                compression = int(self.compression_slider.get())
-                estimated_mb = self.pdf_generator.estimate_file_size(count, compression, 1)
-                self.pdf_estimated_size_label.configure(text=f"💡 推定: {estimated_mb:.1f} MB")
+                # Estimate size at maximum quality
+                estimated_mb = self.pdf_generator.estimate_file_size_max_quality(count)
+
+                # Check if splitting will occur
+                target_size_mb = int(self.target_size_entry.get())
+                if estimated_mb > target_size_mb:
+                    num_pdfs = int(estimated_mb / target_size_mb) + 1
+                    self.pdf_estimated_size_label.configure(
+                        text=f"💡 推定: {estimated_mb:.1f} MB → {num_pdfs}ファイルに分割",
+                        text_color="orange"
+                    )
+                else:
+                    self.pdf_estimated_size_label.configure(
+                        text=f"💡 推定: {estimated_mb:.1f} MB",
+                        text_color="gray"
+                    )
         except Exception as e:
             logger.error(f"Failed to count images: {e}")
             self.image_count_label.configure(text="画像数: エラー", text_color="red")
@@ -468,11 +476,6 @@ class MainWindow(ctk.CTk):
                 logger.error(f"Failed to open folder: {e}")
                 messagebox.showerror("エラー", f"フォルダを開けません: {e}")
 
-    def on_compression_change(self, value: int):
-        """Handle compression level change."""
-        folder_path = self.image_folder_entry.get()
-        if folder_path and Path(folder_path).exists():
-            self.update_image_count(Path(folder_path))
 
     def on_target_size_toggle(self):
         """Handle target size checkbox toggle."""
@@ -626,7 +629,7 @@ class MainWindow(ctk.CTk):
             self.after(0, self.reset_screenshot_ui)
 
     def pdf_conversion_thread(self):
-        """PDF conversion thread."""
+        """PDF conversion thread - maximum quality with automatic splitting."""
         try:
             folder_path = Path(self.image_folder_entry.get())
 
@@ -644,29 +647,41 @@ class MainWindow(ctk.CTk):
 
             config = self.get_config_from_ui()
             output_path = Path(self.pdf_output_entry.get())
-            compression = int(self.compression_slider.get())
+            max_size_mb = config.target_size_mb
 
-            if config.target_size_enabled and config.size_priority == "size":
-                success, file_size = self.pdf_generator.optimize_for_target_size(
-                    image_files,
-                    output_path,
-                    config.target_size_mb
-                )
-            else:
-                success, file_size = self.pdf_generator.create_pdf(
-                    image_files,
-                    output_path,
-                    compression
-                )
+            # Create split PDFs at maximum quality
+            success, pdf_paths, pdf_sizes = self.pdf_generator.create_split_pdfs(
+                image_files,
+                output_path,
+                max_size_mb
+            )
 
             if success:
-                self.update_pdf_status(f"完了！ ({file_size:.2f} MB)")
-                self.show_info(
-                    "PDF生成完了",
-                    f"出力先: {output_path}\n"
-                    f"サイズ: {file_size:.2f} MB\n"
-                    f"ページ数: {len(image_files)}"
-                )
+                total_size = sum(pdf_sizes)
+                self.update_pdf_status(f"完了！ ({total_size:.2f} MB)")
+
+                # Build message
+                if len(pdf_paths) == 1:
+                    message = (
+                        f"出力先: {pdf_paths[0]}\n"
+                        f"サイズ: {pdf_sizes[0]:.2f} MB\n"
+                        f"ページ数: {len(image_files)}\n"
+                        f"画質: 最高画質（圧縮なし）"
+                    )
+                else:
+                    files_info = "\n".join([
+                        f"  {path.name}: {size:.2f} MB"
+                        for path, size in zip(pdf_paths, pdf_sizes)
+                    ])
+                    message = (
+                        f"✅ {len(pdf_paths)}個のPDFファイルを生成しました\n\n"
+                        f"{files_info}\n\n"
+                        f"合計サイズ: {total_size:.2f} MB\n"
+                        f"総ページ数: {len(image_files)}\n"
+                        f"画質: 最高画質（圧縮なし）"
+                    )
+
+                self.show_info("PDF生成完了", message)
             else:
                 self.show_error("PDF生成に失敗しました")
 

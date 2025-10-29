@@ -20,10 +20,10 @@ from ..utils.logger import get_logger
 
 logger = get_logger()
 
-# Readable Japanese font
-JP_FONT = ("Yu Gothic UI", 11)
-JP_FONT_BOLD = ("Yu Gothic UI", 12, "bold")
-JP_FONT_SMALL = ("Yu Gothic UI", 10)
+# Readable Japanese font - larger sizes for better readability
+JP_FONT = ("Yu Gothic UI", 13)
+JP_FONT_BOLD = ("Yu Gothic UI", 14, "bold")
+JP_FONT_SMALL = ("Yu Gothic UI", 12)
 
 
 class CompactSection(ctk.CTkFrame):
@@ -48,7 +48,7 @@ class MainWindow(ctk.CTk):
 
         # Window settings
         self.title("Kindle PDF Converter v1.3")
-        self.geometry("680x750")
+        self.geometry("720x800")
         self.resizable(False, False)
 
         # Set theme
@@ -85,7 +85,7 @@ class MainWindow(ctk.CTk):
         main_container.pack(fill="both", expand=True, padx=8, pady=8)
 
         # Tab view
-        self.tabview = ctk.CTkTabview(main_container, width=664, height=734)
+        self.tabview = ctk.CTkTabview(main_container, width=704, height=784)
         self.tabview.pack(fill="both", expand=True)
 
         # Add tabs
@@ -177,7 +177,7 @@ class MainWindow(ctk.CTk):
         row5.pack(fill="x", padx=10, pady=2)
 
         default_screenshot_dir = str(Path.home() / "Documents" / "kindle_screenshots")
-        self.screenshot_dir_entry = ctk.CTkEntry(row5, width=480, font=JP_FONT)
+        self.screenshot_dir_entry = ctk.CTkEntry(row5, width=520, font=JP_FONT)
         self.screenshot_dir_entry.insert(0, default_screenshot_dir)
         self.screenshot_dir_entry.pack(side="left", padx=(0, 5))
 
@@ -250,7 +250,7 @@ class MainWindow(ctk.CTk):
         row1 = ctk.CTkFrame(source_section, fg_color="transparent")
         row1.pack(fill="x", padx=10, pady=2)
 
-        self.image_folder_entry = ctk.CTkEntry(row1, width=440, font=JP_FONT)
+        self.image_folder_entry = ctk.CTkEntry(row1, width=480, font=JP_FONT)
         self.image_folder_entry.insert(0, "画像フォルダを選択")
         self.image_folder_entry.pack(side="left", padx=(0, 5))
 
@@ -315,9 +315,9 @@ class MainWindow(ctk.CTk):
         ctk.CTkLabel(
             row5,
             text="※ サイズ超過時は自動的に複数PDFに分割（output_1.pdf, output_2.pdf...）",
-            font=("Yu Gothic UI", 9),
+            font=("Yu Gothic UI", 11),
             text_color="gray",
-            wraplength=520
+            wraplength=560
         ).pack(side="left")
 
         # Estimated info
@@ -335,7 +335,7 @@ class MainWindow(ctk.CTk):
         row6.pack(fill="x", padx=10, pady=2)
 
         default_output = self.config.last_output_path or str(Path.home() / "Documents" / "output.pdf")
-        self.pdf_output_entry = ctk.CTkEntry(row6, width=480, font=JP_FONT)
+        self.pdf_output_entry = ctk.CTkEntry(row6, width=520, font=JP_FONT)
         self.pdf_output_entry.insert(0, default_output)
         self.pdf_output_entry.pack(side="left", padx=(0, 5))
 
@@ -398,10 +398,8 @@ class MainWindow(ctk.CTk):
             screenshot_count=int(self.screenshot_count_entry.get()),
             screenshot_interval=float(self.screenshot_interval_entry.get()),
             save_mode="all",
-            compression=1,  # Always maximum quality
             target_size_enabled=self.target_size_var.get(),
             target_size_mb=int(self.target_size_entry.get()),
-            size_priority="size",  # Always split by size
             last_output_path=self.pdf_output_entry.get()
         )
 
@@ -435,7 +433,7 @@ class MainWindow(ctk.CTk):
     def update_image_count(self, folder: Path):
         """Update image count display."""
         try:
-            image_files = list(folder.glob("*.jpg")) + list(folder.glob("*.jpeg")) + list(folder.glob("*.png"))
+            image_files = list(folder.glob("*.png"))
             count = len(image_files)
             self.image_count_label.configure(
                 text=f"画像数: {count}枚",
@@ -633,11 +631,7 @@ class MainWindow(ctk.CTk):
         try:
             folder_path = Path(self.image_folder_entry.get())
 
-            image_files = sorted(
-                list(folder_path.glob("*.jpg")) +
-                list(folder_path.glob("*.jpeg")) +
-                list(folder_path.glob("*.png"))
-            )
+            image_files = sorted(list(folder_path.glob("*.png")))
 
             if not image_files:
                 self.show_error("画像ファイルが見つかりません")

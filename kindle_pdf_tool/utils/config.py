@@ -25,11 +25,9 @@ class Config:
     screenshot_interval: float = 0.5
     save_mode: str = "last"  # "last", "all", or "best"
 
-    # PDF settings
-    compression: int = 3  # 1-5
-    target_size_enabled: bool = False
+    # PDF settings - always maximum quality
+    target_size_enabled: bool = True
     target_size_mb: int = 50
-    size_priority: str = "quality"  # "quality" or "size"
 
     # Output
     last_output_path: str = ""

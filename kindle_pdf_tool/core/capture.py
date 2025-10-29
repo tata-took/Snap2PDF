@@ -27,8 +27,7 @@ class ScreenCapture:
     def capture_screenshot(
         self,
         page_num: int,
-        shot_num: int = 1,
-        quality: int = 95
+        shot_num: int = 1
     ) -> Optional[Path]:
         """
         Capture a single screenshot.
@@ -36,7 +35,6 @@ class ScreenCapture:
         Args:
             page_num: Current page number
             shot_num: Screenshot number (for multiple shots)
-            quality: JPEG quality (1-100)
 
         Returns:
             Path to saved screenshot, or None if failed
@@ -47,14 +45,14 @@ class ScreenCapture:
 
             # Generate filename
             if shot_num == 1:
-                filename = f"page_{page_num:04d}.jpg"
+                filename = f"page_{page_num:04d}.png"
             else:
-                filename = f"page_{page_num:04d}_shot_{shot_num}.jpg"
+                filename = f"page_{page_num:04d}_shot_{shot_num}.png"
 
             filepath = self.temp_dir / filename
 
-            # Save as JPEG with specified quality
-            screenshot.save(filepath, "JPEG", quality=quality)
+            # Save as PNG (lossless compression)
+            screenshot.save(filepath, "PNG")
 
             logger.info(f"Screenshot saved: {filename}")
             return filepath
@@ -67,8 +65,7 @@ class ScreenCapture:
         self,
         page_num: int,
         count: int,
-        interval: float,
-        quality: int = 95
+        interval: float
     ) -> List[Path]:
         """
         Capture multiple screenshots with interval.
@@ -77,7 +74,6 @@ class ScreenCapture:
             page_num: Current page number
             count: Number of screenshots to take
             interval: Interval between screenshots in seconds
-            quality: JPEG quality (1-100)
 
         Returns:
             List of paths to saved screenshots
@@ -85,7 +81,7 @@ class ScreenCapture:
         screenshots = []
 
         for i in range(1, count + 1):
-            filepath = self.capture_screenshot(page_num, i, quality)
+            filepath = self.capture_screenshot(page_num, i)
             if filepath:
                 screenshots.append(filepath)
 
@@ -122,7 +118,7 @@ class ScreenCapture:
 
         # Rename best shot to standard name
         page_num = int(best_shot.stem.split('_')[1])
-        new_name = f"page_{page_num:04d}.jpg"
+        new_name = f"page_{page_num:04d}.png"
         new_path = best_shot.parent / new_name
 
         try:
@@ -158,7 +154,7 @@ class ScreenCapture:
 
         # Rename last shot to standard name
         page_num = int(last_shot.stem.split('_')[1])
-        new_name = f"page_{page_num:04d}.jpg"
+        new_name = f"page_{page_num:04d}.png"
         new_path = last_shot.parent / new_name
 
         try:
@@ -183,7 +179,7 @@ class ScreenCapture:
         renamed = []
 
         for i, shot in enumerate(screenshots, 1):
-            new_name = f"page_{page_num:04d}_{i}.jpg"
+            new_name = f"page_{page_num:04d}_{i}.png"
             new_path = shot.parent / new_name
 
             try:
@@ -200,7 +196,7 @@ class ScreenCapture:
         """Clean up temporary directory and all screenshots."""
         try:
             if self.temp_dir.exists():
-                for file in self.temp_dir.glob("*.jpg"):
+                for file in self.temp_dir.glob("*.png"):
                     file.unlink()
                 self.temp_dir.rmdir()
                 logger.info("Temporary files cleaned up")

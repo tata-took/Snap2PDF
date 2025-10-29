@@ -1,8 +1,9 @@
-"""Main window for Kindle PDF Converter."""
+"""Main window for Kindle PDF Converter with separate Screenshot and PDF modes."""
 
 import os
 import time
 import threading
+import subprocess
 from pathlib import Path
 from tkinter import filedialog, messagebox
 from typing import Optional, List
@@ -20,7 +21,7 @@ logger = get_logger()
 
 
 class MainWindow(ctk.CTk):
-    """Main application window."""
+    """Main application window with tabbed interface."""
 
     def __init__(self):
         """Initialize main window."""
@@ -28,7 +29,7 @@ class MainWindow(ctk.CTk):
 
         # Window settings
         self.title("Kindle PDF Converter")
-        self.geometry("600x900")
+        self.geometry("700x850")
         self.resizable(False, False)
 
         # Set theme
@@ -43,6 +44,7 @@ class MainWindow(ctk.CTk):
         self.is_processing = False
         self.stop_requested = False
         self.start_time = 0
+        self.screenshot_output_dir: Optional[Path] = None
 
         # Core components
         self.screen_capture: Optional[ScreenCapture] = None
@@ -58,39 +60,71 @@ class MainWindow(ctk.CTk):
         logger.info("Application started")
 
     def build_ui(self):
-        """Build user interface."""
-        # Main container with scrollbar
-        self.main_frame = ctk.CTkScrollableFrame(self, width=580, height=880)
-        self.main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        """Build user interface with tabs."""
+        # Main container
+        main_container = ctk.CTkFrame(self)
+        main_container.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Tab view
+        self.tabview = ctk.CTkTabview(main_container, width=680, height=800)
+        self.tabview.pack(fill="both", expand=True)
+
+        # Add tabs
+        self.tabview.add("📸 スクショ撮影")
+        self.tabview.add("📄 PDF変換")
+
+        # Build screenshot tab
+        self.build_screenshot_tab()
+
+        # Build PDF conversion tab
+        self.build_pdf_tab()
+
+    def build_screenshot_tab(self):
+        """Build screenshot capture tab."""
+        tab = self.tabview.tab("📸 スクショ撮影")
+
+        # Scrollable frame
+        scroll_frame = ctk.CTkScrollableFrame(tab, width=650, height=700)
+        scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Info label
+        info_label = ctk.CTkLabel(
+            scroll_frame,
+            text="Kindleアプリから自動的にスクリーンショットを撮影します。\n撮影後、画像を手動で確認・選定してからPDF変換できます。",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+            wraplength=600
+        )
+        info_label.pack(pady=(5, 15))
 
         # === Basic Settings ===
-        self.basic_section = SectionFrame(self.main_frame, "基本設定")
-        self.basic_section.pack(fill="x", padx=10, pady=5)
+        basic_section = SectionFrame(scroll_frame, "基本設定")
+        basic_section.pack(fill="x", padx=10, pady=5)
 
         self.total_pages_entry = LabeledEntry(
-            self.basic_section,
+            basic_section,
             "総ページ数:",
             str(self.config.total_pages)
         )
         self.total_pages_entry.pack(fill="x", padx=20, pady=5)
 
         self.start_page_entry = LabeledEntry(
-            self.basic_section,
+            basic_section,
             "開始ページ:",
             str(self.config.start_page)
         )
         self.start_page_entry.pack(fill="x", padx=20, pady=5)
 
         # === Page Operations ===
-        self.page_section = SectionFrame(self.main_frame, "ページ操作")
-        self.page_section.pack(fill="x", padx=10, pady=5)
+        page_section = SectionFrame(scroll_frame, "ページ操作")
+        page_section.pack(fill="x", padx=10, pady=5)
 
         # Direction
-        self.direction_frame = ctk.CTkFrame(self.page_section, fg_color="transparent")
-        self.direction_frame.pack(fill="x", padx=20, pady=5)
+        direction_frame = ctk.CTkFrame(page_section, fg_color="transparent")
+        direction_frame.pack(fill="x", padx=20, pady=5)
 
         ctk.CTkLabel(
-            self.direction_frame,
+            direction_frame,
             text="読み方向:",
             width=150,
             anchor="w"
@@ -98,21 +132,21 @@ class MainWindow(ctk.CTk):
 
         self.direction_var = ctk.StringVar(value=self.config.direction)
         ctk.CTkRadioButton(
-            self.direction_frame,
+            direction_frame,
             text="右開き",
             variable=self.direction_var,
             value="right"
         ).pack(side="left", padx=10)
 
         ctk.CTkRadioButton(
-            self.direction_frame,
+            direction_frame,
             text="左開き",
             variable=self.direction_var,
             value="left"
         ).pack(side="left")
 
         self.page_wait_entry = LabeledEntry(
-            self.page_section,
+            page_section,
             "ページめくり待機:",
             str(self.config.page_wait),
             width=80
@@ -120,13 +154,13 @@ class MainWindow(ctk.CTk):
         self.page_wait_entry.pack(fill="x", padx=20, pady=5)
 
         ctk.CTkLabel(
-            self.page_section,
+            page_section,
             text="秒",
             font=ctk.CTkFont(size=11)
         ).pack(anchor="w", padx=(180, 0))
 
         self.initial_wait_entry = LabeledEntry(
-            self.page_section,
+            page_section,
             "初回読み込み待機:",
             str(self.config.initial_wait),
             width=80
@@ -134,31 +168,32 @@ class MainWindow(ctk.CTk):
         self.initial_wait_entry.pack(fill="x", padx=20, pady=5)
 
         ctk.CTkLabel(
-            self.page_section,
+            page_section,
             text="秒",
             font=ctk.CTkFont(size=11)
         ).pack(anchor="w", padx=(180, 0))
 
         # === Capture Settings ===
-        self.capture_section = SectionFrame(self.main_frame, "キャプチャ設定")
-        self.capture_section.pack(fill="x", padx=10, pady=5)
+        capture_section = SectionFrame(scroll_frame, "キャプチャ設定")
+        capture_section.pack(fill="x", padx=10, pady=5)
 
         self.screenshot_count_entry = LabeledEntry(
-            self.capture_section,
-            "📸 スクショ回数:",
+            capture_section,
+            "📸 スクショ回数/ページ:",
             str(self.config.screenshot_count),
             width=80
         )
         self.screenshot_count_entry.pack(fill="x", padx=20, pady=5)
 
         ctk.CTkLabel(
-            self.capture_section,
-            text="回",
-            font=ctk.CTkFont(size=11)
+            capture_section,
+            text="回（撮影後、最良のものを手動で選べます）",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
         ).pack(anchor="w", padx=(180, 0))
 
         self.screenshot_interval_entry = LabeledEntry(
-            self.capture_section,
+            capture_section,
             "スクショ間隔:",
             str(self.config.screenshot_interval),
             width=80
@@ -166,47 +201,150 @@ class MainWindow(ctk.CTk):
         self.screenshot_interval_entry.pack(fill="x", padx=20, pady=5)
 
         ctk.CTkLabel(
-            self.capture_section,
+            capture_section,
             text="秒",
             font=ctk.CTkFont(size=11)
         ).pack(anchor="w", padx=(180, 0))
 
-        # Save mode
+        # === Output Directory ===
+        output_section = SectionFrame(scroll_frame, "保存先")
+        output_section.pack(fill="x", padx=10, pady=5)
+
+        output_frame = ctk.CTkFrame(output_section, fg_color="transparent")
+        output_frame.pack(fill="x", padx=20, pady=5)
+
+        default_screenshot_dir = str(Path.home() / "Documents" / "kindle_screenshots")
+        self.screenshot_dir_entry = ctk.CTkEntry(output_frame, width=450)
+        self.screenshot_dir_entry.insert(0, default_screenshot_dir)
+        self.screenshot_dir_entry.pack(side="left", padx=(0, 10))
+
+        browse_dir_btn = ctk.CTkButton(
+            output_frame,
+            text="📁 参照",
+            width=80,
+            command=self.browse_screenshot_dir
+        )
+        browse_dir_btn.pack(side="left")
+
         ctk.CTkLabel(
-            self.capture_section,
-            text="保存方法:",
-            font=ctk.CTkFont(size=12)
-        ).pack(anchor="w", padx=20, pady=(10, 5))
+            output_section,
+            text="💡 撮影した画像は上記フォルダに保存されます",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        ).pack(anchor="w", padx=20, pady=(0, 10))
 
-        self.save_mode_var = ctk.StringVar(value=self.config.save_mode)
+        # === Progress ===
+        self.screenshot_progress = ProgressFrame(scroll_frame)
+        self.screenshot_progress.pack(fill="x", padx=10, pady=10)
 
-        ctk.CTkRadioButton(
-            self.capture_section,
-            text="最後の1枚のみ",
-            variable=self.save_mode_var,
-            value="last"
-        ).pack(anchor="w", padx=40, pady=2)
+        # === Control Buttons ===
+        control_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        control_frame.pack(fill="x", padx=20, pady=10)
 
-        ctk.CTkRadioButton(
-            self.capture_section,
-            text="すべて保存",
-            variable=self.save_mode_var,
-            value="all"
-        ).pack(anchor="w", padx=40, pady=2)
+        self.screenshot_start_btn = ctk.CTkButton(
+            control_frame,
+            text="▶ スクショ開始",
+            width=150,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            command=self.start_screenshot
+        )
+        self.screenshot_start_btn.pack(side="left", padx=(100, 20))
 
-        ctk.CTkRadioButton(
-            self.capture_section,
-            text="最良画質を自動選択",
-            variable=self.save_mode_var,
-            value="best"
-        ).pack(anchor="w", padx=40, pady=2)
+        self.screenshot_stop_btn = ctk.CTkButton(
+            control_frame,
+            text="⏹ 停止",
+            width=120,
+            height=40,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            command=self.stop_processing,
+            state="disabled"
+        )
+        self.screenshot_stop_btn.pack(side="left")
+
+        # === Status ===
+        status_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
+        status_frame.pack(fill="x", padx=20, pady=10)
+
+        self.screenshot_status = ctk.CTkLabel(
+            status_frame,
+            text="ステータス: 待機中",
+            font=ctk.CTkFont(size=11),
+            anchor="w"
+        )
+        self.screenshot_status.pack(side="left")
+
+        save_config_btn = ctk.CTkButton(
+            status_frame,
+            text="設定保存",
+            width=100,
+            height=30,
+            command=self.save_config
+        )
+        save_config_btn.pack(side="right")
+
+    def build_pdf_tab(self):
+        """Build PDF conversion tab."""
+        tab = self.tabview.tab("📄 PDF変換")
+
+        # Scrollable frame
+        scroll_frame = ctk.CTkScrollableFrame(tab, width=650, height=700)
+        scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Info label
+        info_label = ctk.CTkLabel(
+            scroll_frame,
+            text="撮影済みの画像フォルダを選択してPDFに変換します。\n事前に不要な画像を削除しておくことをおすすめします。",
+            font=ctk.CTkFont(size=11),
+            text_color="gray",
+            wraplength=600
+        )
+        info_label.pack(pady=(5, 15))
+
+        # === Image Source ===
+        source_section = SectionFrame(scroll_frame, "画像フォルダ選択")
+        source_section.pack(fill="x", padx=10, pady=5)
+
+        source_frame = ctk.CTkFrame(source_section, fg_color="transparent")
+        source_frame.pack(fill="x", padx=20, pady=5)
+
+        self.image_folder_entry = ctk.CTkEntry(source_frame, width=450)
+        self.image_folder_entry.insert(0, "画像フォルダを選択してください")
+        self.image_folder_entry.pack(side="left", padx=(0, 10))
+
+        browse_folder_btn = ctk.CTkButton(
+            source_frame,
+            text="📁 フォルダ選択",
+            width=120,
+            command=self.browse_image_folder
+        )
+        browse_folder_btn.pack(side="left")
+
+        # Image count display
+        self.image_count_label = ctk.CTkLabel(
+            source_section,
+            text="画像数: 未選択",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        self.image_count_label.pack(anchor="w", padx=20, pady=5)
+
+        # Open folder button
+        self.open_folder_btn = ctk.CTkButton(
+            source_section,
+            text="🖼️ フォルダを開く",
+            width=150,
+            command=self.open_image_folder,
+            state="disabled"
+        )
+        self.open_folder_btn.pack(anchor="w", padx=20, pady=5)
 
         # === PDF Settings ===
-        self.pdf_section = SectionFrame(self.main_frame, "PDF設定")
-        self.pdf_section.pack(fill="x", padx=10, pady=5)
+        pdf_section = SectionFrame(scroll_frame, "PDF設定")
+        pdf_section.pack(fill="x", padx=10, pady=5)
 
         self.compression_slider = LabeledSlider(
-            self.pdf_section,
+            pdf_section,
             "圧縮レベル:",
             from_=1,
             to=5,
@@ -215,17 +353,25 @@ class MainWindow(ctk.CTk):
         )
         self.compression_slider.pack(fill="x", padx=20, pady=5)
 
+        compression_info = ctk.CTkLabel(
+            pdf_section,
+            text="1:高画質・大容量 → 5:低画質・小容量",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        )
+        compression_info.pack(anchor="w", padx=20, pady=(0, 10))
+
         # Target size
         self.target_size_var = ctk.BooleanVar(value=self.config.target_size_enabled)
-        self.target_size_check = ctk.CTkCheckBox(
-            self.pdf_section,
+        target_size_check = ctk.CTkCheckBox(
+            pdf_section,
             text="📦 目標ファイルサイズ設定",
             variable=self.target_size_var,
             command=self.on_target_size_toggle
         )
-        self.target_size_check.pack(anchor="w", padx=20, pady=5)
+        target_size_check.pack(anchor="w", padx=20, pady=5)
 
-        self.target_size_frame = ctk.CTkFrame(self.pdf_section, fg_color="transparent")
+        self.target_size_frame = ctk.CTkFrame(pdf_section, fg_color="transparent")
         self.target_size_frame.pack(fill="x", padx=40, pady=5)
 
         self.target_size_entry = LabeledEntry(
@@ -270,92 +416,66 @@ class MainWindow(ctk.CTk):
         ).pack(side="left")
 
         # Estimated size
-        self.estimated_size_label = ctk.CTkLabel(
-            self.pdf_section,
+        self.pdf_estimated_size_label = ctk.CTkLabel(
+            pdf_section,
             text="💡 推定: -- MB",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
-        self.estimated_size_label.pack(anchor="w", padx=20, pady=5)
+        self.pdf_estimated_size_label.pack(anchor="w", padx=20, pady=5)
 
-        # Update initial estimate
-        self.update_estimated_size()
+        # === Output ===
+        output_section = SectionFrame(scroll_frame, "出力先")
+        output_section.pack(fill="x", padx=10, pady=5)
 
-        # === Output Settings ===
-        self.output_section = SectionFrame(self.main_frame, "出力先")
-        self.output_section.pack(fill="x", padx=10, pady=5)
-
-        output_frame = ctk.CTkFrame(self.output_section, fg_color="transparent")
+        output_frame = ctk.CTkFrame(output_section, fg_color="transparent")
         output_frame.pack(fill="x", padx=20, pady=5)
 
         default_output = self.config.last_output_path or str(
             Path.home() / "Documents" / "output.pdf"
         )
-        self.output_entry = ctk.CTkEntry(output_frame, width=400)
-        self.output_entry.insert(0, default_output)
-        self.output_entry.pack(side="left", padx=(0, 10))
+        self.pdf_output_entry = ctk.CTkEntry(output_frame, width=450)
+        self.pdf_output_entry.insert(0, default_output)
+        self.pdf_output_entry.pack(side="left", padx=(0, 10))
 
-        self.browse_button = ctk.CTkButton(
+        browse_output_btn = ctk.CTkButton(
             output_frame,
             text="📁 参照",
             width=80,
-            command=self.browse_output
+            command=self.browse_pdf_output
         )
-        self.browse_button.pack(side="left")
+        browse_output_btn.pack(side="left")
 
         # === Progress ===
-        self.progress_frame = ProgressFrame(self.main_frame)
-        self.progress_frame.pack(fill="x", padx=10, pady=10)
+        self.pdf_progress = ProgressFrame(scroll_frame)
+        self.pdf_progress.pack(fill="x", padx=10, pady=10)
 
         # === Control Buttons ===
-        control_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
+        control_frame = ctk.CTkFrame(scroll_frame, fg_color="transparent")
         control_frame.pack(fill="x", padx=20, pady=10)
 
-        self.start_button = ctk.CTkButton(
+        self.pdf_convert_btn = ctk.CTkButton(
             control_frame,
-            text="▶ 開始",
-            width=120,
+            text="📄 PDF生成",
+            width=150,
             height=40,
             font=ctk.CTkFont(size=14, weight="bold"),
-            command=self.start_processing
+            command=self.start_pdf_conversion
         )
-        self.start_button.pack(side="left", padx=(80, 20))
+        self.pdf_convert_btn.pack(side="left", padx=(150, 20))
 
-        self.stop_button = ctk.CTkButton(
-            control_frame,
-            text="⏹ 停止",
-            width=120,
-            height=40,
-            font=ctk.CTkFont(size=14, weight="bold"),
-            command=self.stop_processing,
-            state="disabled"
-        )
-        self.stop_button.pack(side="left")
-
-        # === Status Bar ===
-        status_frame = ctk.CTkFrame(self.main_frame, fg_color="transparent")
-        status_frame.pack(fill="x", padx=20, pady=10)
-
-        self.status_label = ctk.CTkLabel(
-            status_frame,
+        # === Status ===
+        self.pdf_status = ctk.CTkLabel(
+            scroll_frame,
             text="ステータス: 待機中",
             font=ctk.CTkFont(size=11),
             anchor="w"
         )
-        self.status_label.pack(side="left")
-
-        self.save_config_button = ctk.CTkButton(
-            status_frame,
-            text="設定保存",
-            width=100,
-            height=30,
-            command=self.save_config
-        )
-        self.save_config_button.pack(side="right")
+        self.pdf_status.pack(anchor="w", padx=20, pady=10)
 
     def load_config_to_ui(self):
         """Load configuration to UI elements."""
-        # Already loaded in __init__ via default values
+        # Already loaded via default values
         pass
 
     def save_config(self):
@@ -363,7 +483,7 @@ class MainWindow(ctk.CTk):
         try:
             config = self.get_config_from_ui()
             if self.config_manager.save(config):
-                self.status_label.configure(text="ステータス: 設定を保存しました")
+                self.screenshot_status.configure(text="ステータス: 設定を保存しました")
                 logger.info("Configuration saved")
             else:
                 messagebox.showerror("エラー", "設定の保存に失敗しました")
@@ -381,28 +501,85 @@ class MainWindow(ctk.CTk):
             initial_wait=float(self.initial_wait_entry.get()),
             screenshot_count=int(self.screenshot_count_entry.get()),
             screenshot_interval=float(self.screenshot_interval_entry.get()),
-            save_mode=self.save_mode_var.get(),
+            save_mode="all",  # Always save all in screenshot mode
             compression=self.compression_slider.get(),
             target_size_enabled=self.target_size_var.get(),
             target_size_mb=int(self.target_size_entry.get()),
             size_priority=self.priority_var.get(),
-            last_output_path=self.output_entry.get()
+            last_output_path=self.pdf_output_entry.get()
         )
 
-    def browse_output(self):
-        """Browse for output file location."""
+    def browse_screenshot_dir(self):
+        """Browse for screenshot output directory."""
+        directory = filedialog.askdirectory(
+            title="スクリーンショット保存先を選択"
+        )
+        if directory:
+            self.screenshot_dir_entry.delete(0, "end")
+            self.screenshot_dir_entry.insert(0, directory)
+
+    def browse_image_folder(self):
+        """Browse for image folder."""
+        directory = filedialog.askdirectory(
+            title="画像フォルダを選択"
+        )
+        if directory:
+            self.image_folder_entry.delete(0, "end")
+            self.image_folder_entry.insert(0, directory)
+
+            # Count images
+            self.update_image_count(Path(directory))
+            self.open_folder_btn.configure(state="normal")
+
+    def browse_pdf_output(self):
+        """Browse for PDF output file."""
         filename = filedialog.asksaveasfilename(
             defaultextension=".pdf",
             filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
             initialfile="output.pdf"
         )
         if filename:
-            self.output_entry.delete(0, "end")
-            self.output_entry.insert(0, filename)
+            self.pdf_output_entry.delete(0, "end")
+            self.pdf_output_entry.insert(0, filename)
+
+    def update_image_count(self, folder: Path):
+        """Update image count display."""
+        try:
+            image_files = list(folder.glob("*.jpg")) + list(folder.glob("*.jpeg")) + list(folder.glob("*.png"))
+            count = len(image_files)
+            self.image_count_label.configure(
+                text=f"画像数: {count}枚",
+                text_color="green" if count > 0 else "orange"
+            )
+
+            # Update PDF size estimate
+            if count > 0:
+                compression = self.compression_slider.get()
+                estimated_mb = self.pdf_generator.estimate_file_size(count, compression, 1)
+                self.pdf_estimated_size_label.configure(text=f"💡 推定: {estimated_mb:.1f} MB")
+        except Exception as e:
+            logger.error(f"Failed to count images: {e}")
+            self.image_count_label.configure(text="画像数: エラー", text_color="red")
+
+    def open_image_folder(self):
+        """Open image folder in file explorer."""
+        folder_path = self.image_folder_entry.get()
+        if folder_path and Path(folder_path).exists():
+            try:
+                if os.name == 'nt':  # Windows
+                    os.startfile(folder_path)
+                elif os.name == 'posix':  # macOS/Linux
+                    subprocess.Popen(['xdg-open', folder_path])
+            except Exception as e:
+                logger.error(f"Failed to open folder: {e}")
+                messagebox.showerror("エラー", f"フォルダを開けません: {e}")
 
     def on_compression_change(self, value: int):
         """Handle compression level change."""
-        self.update_estimated_size()
+        # Update estimate if folder is selected
+        folder_path = self.image_folder_entry.get()
+        if folder_path and Path(folder_path).exists():
+            self.update_image_count(Path(folder_path))
 
     def on_target_size_toggle(self):
         """Handle target size checkbox toggle."""
@@ -417,44 +594,8 @@ class MainWindow(ctk.CTk):
                     if isinstance(child, (ctk.CTkEntry, ctk.CTkRadioButton)):
                         child.configure(state=state)
 
-    def update_estimated_size(self):
-        """Update estimated file size display."""
-        try:
-            total_pages = int(self.total_pages_entry.get())
-            start_page = int(self.start_page_entry.get())
-            compression = self.compression_slider.get()
-            save_mode = self.save_mode_var.get()
-
-            page_count = total_pages - start_page + 1
-            screenshot_multiplier = 1
-
-            if save_mode == "all":
-                screenshot_multiplier = int(self.screenshot_count_entry.get())
-
-            estimated_mb = self.pdf_generator.estimate_file_size(
-                page_count,
-                compression,
-                screenshot_multiplier
-            )
-
-            # Update label
-            self.estimated_size_label.configure(text=f"💡 推定: {estimated_mb:.1f} MB")
-
-            # Color based on target size
-            if self.target_size_var.get():
-                target_mb = int(self.target_size_entry.get())
-                if estimated_mb <= target_mb:
-                    self.estimated_size_label.configure(text_color="green")
-                else:
-                    self.estimated_size_label.configure(text_color="orange")
-            else:
-                self.estimated_size_label.configure(text_color="gray")
-
-        except Exception as e:
-            logger.error(f"Failed to update estimated size: {e}")
-
-    def validate_inputs(self) -> bool:
-        """Validate user inputs."""
+    def validate_screenshot_inputs(self) -> bool:
+        """Validate screenshot mode inputs."""
         try:
             total_pages = int(self.total_pages_entry.get())
             start_page = int(self.start_page_entry.get())
@@ -477,9 +618,9 @@ class MainWindow(ctk.CTk):
                 messagebox.showerror("エラー", "スクショ回数は1-10回の範囲で指定してください")
                 return False
 
-            output_path = self.output_entry.get()
-            if not output_path:
-                messagebox.showerror("エラー", "出力先を指定してください")
+            output_dir = self.screenshot_dir_entry.get()
+            if not output_dir:
+                messagebox.showerror("エラー", "保存先を指定してください")
                 return False
 
             return True
@@ -488,144 +629,206 @@ class MainWindow(ctk.CTk):
             messagebox.showerror("エラー", f"入力値が不正です: {e}")
             return False
 
-    def start_processing(self):
-        """Start PDF generation process."""
-        if not self.validate_inputs():
+    def validate_pdf_inputs(self) -> bool:
+        """Validate PDF mode inputs."""
+        folder_path = self.image_folder_entry.get()
+        if not folder_path or not Path(folder_path).exists():
+            messagebox.showerror("エラー", "有効な画像フォルダを選択してください")
+            return False
+
+        output_path = self.pdf_output_entry.get()
+        if not output_path:
+            messagebox.showerror("エラー", "出力先を指定してください")
+            return False
+
+        return True
+
+    def start_screenshot(self):
+        """Start screenshot capture."""
+        if not self.validate_screenshot_inputs():
             return
 
-        # Save config before starting
         self.save_config()
 
-        # Start processing in separate thread
         self.is_processing = True
         self.stop_requested = False
-        self.start_button.configure(state="disabled")
-        self.stop_button.configure(state="normal")
-        self.status_label.configure(text="ステータス: 処理中...")
+        self.screenshot_start_btn.configure(state="disabled")
+        self.screenshot_stop_btn.configure(state="normal")
+        self.screenshot_status.configure(text="ステータス: 処理中...")
 
-        threading.Thread(target=self.processing_thread, daemon=True).start()
+        threading.Thread(target=self.screenshot_thread, daemon=True).start()
+
+    def start_pdf_conversion(self):
+        """Start PDF conversion."""
+        if not self.validate_pdf_inputs():
+            return
+
+        self.is_processing = True
+        self.pdf_convert_btn.configure(state="disabled")
+        self.pdf_status.configure(text="ステータス: PDF生成中...")
+
+        threading.Thread(target=self.pdf_conversion_thread, daemon=True).start()
 
     def stop_processing(self):
         """Request to stop processing."""
         self.stop_requested = True
-        self.status_label.configure(text="ステータス: 停止中...")
-        self.stop_button.configure(state="disabled")
+        self.screenshot_status.configure(text="ステータス: 停止中...")
+        self.screenshot_stop_btn.configure(state="disabled")
 
-    def processing_thread(self):
-        """Main processing thread."""
+    def screenshot_thread(self):
+        """Screenshot capture thread."""
         try:
             config = self.get_config_from_ui()
 
+            # Create output directory
+            output_dir = Path(self.screenshot_dir_entry.get())
+            output_dir.mkdir(parents=True, exist_ok=True)
+
             # Initialize components
-            temp_dir = Path("./temp_captures")
-            self.screen_capture = ScreenCapture(temp_dir)
+            self.screen_capture = ScreenCapture(output_dir)
             self.kindle_automation = KindleAutomation()
 
             # Find and activate Kindle window
-            self.update_status("Kindleウィンドウを検索中...")
+            self.update_screenshot_status("Kindleウィンドウを検索中...")
             if not self.kindle_automation.initialize():
                 self.show_error("Kindleウィンドウが見つかりません。\nKindleアプリを起動して書籍を開いてください。")
                 return
 
             # Initial wait
-            self.update_status("初期待機中...")
+            self.update_screenshot_status("初期待機中...")
             time.sleep(config.initial_wait)
 
             # Process pages
             self.start_time = time.time()
             page_count = config.total_pages - config.start_page + 1
-            processed_pages = []
 
             for i in range(page_count):
                 if self.stop_requested:
-                    self.update_status("処理を中断しました")
+                    self.update_screenshot_status("処理を中断しました")
                     break
 
                 current_page = config.start_page + i
 
-                # Capture screenshots
-                self.update_status(f"ページ {current_page}: スクリーンショット撮影中...")
+                # Capture multiple screenshots
+                self.update_screenshot_status(f"ページ {current_page}: スクリーンショット撮影中...")
                 screenshots = self.screen_capture.capture_multiple(
                     current_page,
                     config.screenshot_count,
                     config.screenshot_interval
                 )
 
-                # Select screenshots based on mode
-                if config.save_mode == "last":
-                    final_shot = self.screen_capture.keep_last_screenshot(screenshots)
-                    if final_shot:
-                        processed_pages.append(final_shot)
-                elif config.save_mode == "best":
-                    best_shot = self.screen_capture.select_best_screenshot(screenshots)
-                    if best_shot:
-                        processed_pages.append(best_shot)
-                elif config.save_mode == "all":
-                    renamed = self.screen_capture.rename_all_screenshots(screenshots, current_page)
-                    processed_pages.extend(renamed)
+                # Keep all screenshots with proper naming
+                self.screen_capture.rename_all_screenshots(screenshots, current_page)
 
                 # Update progress
-                self.update_progress(i + 1, page_count)
+                self.update_screenshot_progress(i + 1, page_count)
 
                 # Turn page (except for last page)
                 if i < page_count - 1:
                     self.kindle_automation.turn_page(config.direction)
                     time.sleep(config.page_wait)
 
-            if self.stop_requested:
+            if not self.stop_requested:
+                self.update_screenshot_status("完了！")
+                self.show_info(
+                    "スクリーンショット撮影完了",
+                    f"画像を保存しました！\n\n"
+                    f"保存先: {output_dir}\n"
+                    f"撮影枚数: {page_count * config.screenshot_count}枚\n\n"
+                    f"フォルダを開いて不要な画像を削除してから、\n"
+                    f"「PDF変換」タブでPDFに変換してください。"
+                )
+
+                # Switch to PDF tab and set the folder
+                self.after(0, lambda: self.switch_to_pdf_tab(output_dir))
+
+        except Exception as e:
+            logger.error(f"Screenshot error: {e}", exc_info=True)
+            self.show_error(f"処理エラー: {e}")
+
+        finally:
+            # Don't cleanup - keep the files
+            self.after(0, self.reset_screenshot_ui)
+
+    def pdf_conversion_thread(self):
+        """PDF conversion thread."""
+        try:
+            # Get image folder
+            folder_path = Path(self.image_folder_entry.get())
+
+            # Find all image files
+            image_files = sorted(
+                list(folder_path.glob("*.jpg")) +
+                list(folder_path.glob("*.jpeg")) +
+                list(folder_path.glob("*.png"))
+            )
+
+            if not image_files:
+                self.show_error("画像ファイルが見つかりません")
                 return
 
-            # Generate PDF
-            self.update_status("PDF生成中...")
-            output_path = Path(config.last_output_path)
+            self.update_pdf_status(f"PDF生成中... ({len(image_files)}枚の画像)")
 
+            # Get settings
+            config = self.get_config_from_ui()
+            output_path = Path(self.pdf_output_entry.get())
+            compression = self.compression_slider.get()
+
+            # Generate PDF
             if config.target_size_enabled and config.size_priority == "size":
-                # Optimize for target size
                 success, file_size = self.pdf_generator.optimize_for_target_size(
-                    processed_pages,
+                    image_files,
                     output_path,
                     config.target_size_mb
                 )
             else:
-                # Standard generation
                 success, file_size = self.pdf_generator.create_pdf(
-                    processed_pages,
+                    image_files,
                     output_path,
-                    config.compression
+                    compression
                 )
 
             if success:
-                self.update_status(f"完了！ ({file_size:.2f} MB)")
-                messagebox.showinfo(
-                    "完了",
+                self.update_pdf_status(f"完了！ ({file_size:.2f} MB)")
+                self.show_info(
+                    "PDF生成完了",
                     f"PDFを生成しました！\n\n"
                     f"出力先: {output_path}\n"
-                    f"ファイルサイズ: {file_size:.2f} MB"
+                    f"ファイルサイズ: {file_size:.2f} MB\n"
+                    f"ページ数: {len(image_files)}"
                 )
             else:
                 self.show_error("PDF生成に失敗しました")
 
         except Exception as e:
-            logger.error(f"Processing error: {e}", exc_info=True)
+            logger.error(f"PDF conversion error: {e}", exc_info=True)
             self.show_error(f"処理エラー: {e}")
 
         finally:
-            # Cleanup
-            if self.screen_capture:
-                self.screen_capture.cleanup()
+            self.after(0, self.reset_pdf_ui)
 
-            self.after(0, self.reset_ui)
+    def switch_to_pdf_tab(self, folder_path: Path):
+        """Switch to PDF tab and set folder."""
+        self.tabview.set("📄 PDF変換")
+        self.image_folder_entry.delete(0, "end")
+        self.image_folder_entry.insert(0, str(folder_path))
+        self.update_image_count(folder_path)
+        self.open_folder_btn.configure(state="normal")
 
-    def update_status(self, message: str):
-        """Update status label."""
+    def update_screenshot_status(self, message: str):
+        """Update screenshot status label."""
         def update():
-            self.status_label.configure(text=f"ステータス: {message}")
-
+            self.screenshot_status.configure(text=f"ステータス: {message}")
         self.after(0, update)
 
-    def update_progress(self, current: int, total: int):
-        """Update progress display."""
-        # Calculate remaining time
+    def update_pdf_status(self, message: str):
+        """Update PDF status label."""
+        def update():
+            self.pdf_status.configure(text=f"ステータス: {message}")
+        self.after(0, update)
+
+    def update_screenshot_progress(self, current: int, total: int):
+        """Update screenshot progress display."""
         elapsed = time.time() - self.start_time
         if current > 0:
             time_per_page = elapsed / current
@@ -639,20 +842,30 @@ class MainWindow(ctk.CTk):
             time_str = None
 
         def update():
-            self.progress_frame.update_progress(current, total, time_str)
-
+            self.screenshot_progress.update_progress(current, total, time_str)
         self.after(0, update)
 
     def show_error(self, message: str):
         """Show error message."""
         def show():
             messagebox.showerror("エラー", message)
-
         self.after(0, show)
 
-    def reset_ui(self):
-        """Reset UI to initial state."""
+    def show_info(self, title: str, message: str):
+        """Show info message."""
+        def show():
+            messagebox.showinfo(title, message)
+        self.after(0, show)
+
+    def reset_screenshot_ui(self):
+        """Reset screenshot UI to initial state."""
         self.is_processing = False
-        self.start_button.configure(state="normal")
-        self.stop_button.configure(state="disabled")
-        self.progress_frame.reset()
+        self.screenshot_start_btn.configure(state="normal")
+        self.screenshot_stop_btn.configure(state="disabled")
+        self.screenshot_progress.reset()
+
+    def reset_pdf_ui(self):
+        """Reset PDF UI to initial state."""
+        self.is_processing = False
+        self.pdf_convert_btn.configure(state="normal")
+        self.pdf_progress.reset()

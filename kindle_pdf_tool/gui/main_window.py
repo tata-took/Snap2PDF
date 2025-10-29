@@ -10,6 +10,7 @@ from typing import Optional, List
 import customtkinter as ctk
 
 from .components import LabeledEntry, LabeledSlider, ProgressFrame
+from .image_review_window import ImageReviewWindow
 from ..core.capture import ScreenCapture
 from ..core.automation import KindleAutomation
 from ..core.pdf_generator import PDFGenerator
@@ -46,7 +47,7 @@ class MainWindow(ctk.CTk):
         super().__init__()
 
         # Window settings
-        self.title("Kindle PDF Converter v1.1")
+        self.title("Kindle PDF Converter v1.2")
         self.geometry("680x750")
         self.resizable(False, False)
 
@@ -606,14 +607,16 @@ class MainWindow(ctk.CTk):
 
             if not self.stop_requested:
                 self.update_screenshot_status("完了！")
-                self.show_info(
-                    "撮影完了",
-                    f"保存先: {output_dir}\n"
-                    f"撮影枚数: {page_count * config.screenshot_count}枚\n\n"
-                    f"画像を確認後、PDF変換タブへ"
-                )
 
-                self.after(0, lambda: self.switch_to_pdf_tab(output_dir))
+                # Open image review window
+                def open_review():
+                    review_window = ImageReviewWindow(
+                        self,
+                        output_dir,
+                        callback=lambda: self.switch_to_pdf_tab(output_dir)
+                    )
+
+                self.after(0, open_review)
 
         except Exception as e:
             logger.error(f"Screenshot error: {e}", exc_info=True)

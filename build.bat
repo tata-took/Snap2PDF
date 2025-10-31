@@ -40,7 +40,7 @@ if exist dist rmdir /s /q dist
 REM Build exe
 echo.
 echo Building executable...
-pyinstaller --clean kindle_pdf_converter.spec
+python -m PyInstaller --clean kindle_pdf_converter.spec
 if %errorlevel% neq 0 (
     echo Error: Build failed
     pause

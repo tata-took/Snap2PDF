@@ -35,7 +35,7 @@ rm -rf build dist
 # Build executable
 echo ""
 echo "Building executable..."
-pyinstaller --clean kindle_pdf_converter.spec
+python3 -m PyInstaller --clean kindle_pdf_converter.spec
 if [ $? -ne 0 ]; then
     echo "Error: Build failed"
     exit 1

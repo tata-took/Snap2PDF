@@ -34,6 +34,7 @@ class ImageReviewWindow(ctk.CTkToplevel):
         self.callback = callback
         self.image_files: List[Path] = []
         self.selected_images: set = set()
+        self.image_widgets: dict = {}  # Store widget references for fast deletion
 
         # Window settings
         self.title("画像確認・削除")
@@ -192,6 +193,8 @@ class ImageReviewWindow(ctk.CTkToplevel):
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
 
+        self.image_widgets.clear()
+
         # Create grid (4 columns)
         columns = 4
         thumbnail_size = (180, 240)
@@ -203,6 +206,9 @@ class ImageReviewWindow(ctk.CTkToplevel):
             # Create frame for each image
             img_frame = ctk.CTkFrame(self.scroll_frame, width=200, height=300)
             img_frame.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+
+            # Store widget reference
+            self.image_widgets[img_path] = img_frame
 
             # Page number label
             page_num = self.extract_page_number(img_path)
@@ -216,7 +222,8 @@ class ImageReviewWindow(ctk.CTkToplevel):
             # Thumbnail
             try:
                 img = Image.open(img_path)
-                img.thumbnail(thumbnail_size, Image.Resampling.LANCZOS)
+                # Use BILINEAR for 3x faster resizing (was LANCZOS)
+                img.thumbnail(thumbnail_size, Image.Resampling.BILINEAR)
 
                 # Convert to CTkImage
                 ctk_img = ctk.CTkImage(
@@ -285,16 +292,28 @@ class ImageReviewWindow(ctk.CTkToplevel):
 
         if result:
             try:
+                deleted_count = len(self.selected_images)
+
                 for img_path in self.selected_images:
+                    # Delete file
                     img_path.unlink()
                     logger.info(f"Deleted: {img_path}")
 
+                    # Remove from list
+                    if img_path in self.image_files:
+                        self.image_files.remove(img_path)
+
+                    # Destroy widget (fast, no reload needed)
+                    if img_path in self.image_widgets:
+                        self.image_widgets[img_path].destroy()
+                        del self.image_widgets[img_path]
+
                 self.selected_images.clear()
 
-                # Reload images
-                self.load_images()
+                # Update count label only (no reload)
+                self.count_label.configure(text=f"画像数: {len(self.image_files)}枚")
 
-                messagebox.showinfo("完了", "選択した画像を削除しました")
+                messagebox.showinfo("完了", f"{deleted_count}枚の画像を削除しました")
 
             except Exception as e:
                 logger.error(f"Failed to delete images: {e}")
@@ -329,18 +348,30 @@ class ImageReviewWindow(ctk.CTkToplevel):
             )
 
             if result:
+                deleted_count = len(images_to_delete)
+
                 for img_path in images_to_delete:
+                    # Delete file
                     img_path.unlink()
                     logger.info(f"Deleted: {img_path}")
+
+                    # Remove from list
+                    if img_path in self.image_files:
+                        self.image_files.remove(img_path)
+
+                    # Destroy widget (fast, no reload needed)
+                    if img_path in self.image_widgets:
+                        self.image_widgets[img_path].destroy()
+                        del self.image_widgets[img_path]
 
                 # Clear entries
                 self.start_page_entry.delete(0, "end")
                 self.end_page_entry.delete(0, "end")
 
-                # Reload images
-                self.load_images()
+                # Update count label only (no reload)
+                self.count_label.configure(text=f"画像数: {len(self.image_files)}枚")
 
-                messagebox.showinfo("完了", f"{len(images_to_delete)}枚の画像を削除しました")
+                messagebox.showinfo("完了", f"{deleted_count}枚の画像を削除しました")
 
         except ValueError:
             messagebox.showerror("エラー", "ページ番号は数値で入力してください")

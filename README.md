@@ -32,7 +32,7 @@ Kindleアプリで表示中の書籍を自動的にスクリーンショット�
 
 ```bash
 # リポジトリのクローン
-git clone https://github.com/yourusername/Snap2PDF.git
+git clone https://github.com/tata-took/Snap2PDF.git
 cd Snap2PDF
 
 # 依存パッケージのインストール
@@ -49,7 +49,7 @@ python main.py
 **Windows:**
 ```bash
 # リポジトリのクローン
-git clone https://github.com/yourusername/Snap2PDF.git
+git clone https://github.com/tata-took/Snap2PDF.git
 cd Snap2PDF
 
 # ビルド（バッチファイルを実行）

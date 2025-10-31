@@ -122,7 +122,8 @@ class ScreenCapture:
         new_path = best_shot.parent / new_name
 
         try:
-            best_shot.rename(new_path)
+            # Use replace() instead of rename() to overwrite if exists
+            best_shot.replace(new_path)
             logger.info(f"Selected best screenshot: {new_name}")
             return new_path
         except Exception as e:
@@ -158,7 +159,8 @@ class ScreenCapture:
         new_path = last_shot.parent / new_name
 
         try:
-            last_shot.rename(new_path)
+            # Use replace() instead of rename() to overwrite if exists
+            last_shot.replace(new_path)
             logger.info(f"Kept last screenshot: {new_name}")
             return new_path
         except Exception as e:
@@ -183,7 +185,8 @@ class ScreenCapture:
             new_path = shot.parent / new_name
 
             try:
-                shot.rename(new_path)
+                # Use replace() instead of rename() to overwrite if exists
+                shot.replace(new_path)
                 renamed.append(new_path)
                 logger.info(f"Renamed to: {new_name}")
             except Exception as e:

@@ -42,9 +42,27 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### 方法2: 実行ファイル（準備中）
+### 方法2: 実行ファイル（EXE）を使用
 
-今後、単体で実行可能な `.exe` ファイルを配布予定です。
+単体で実行可能な `.exe` ファイルを自分でビルドできます。
+
+**Windows:**
+```bash
+# リポジトリのクローン
+git clone https://github.com/yourusername/Snap2PDF.git
+cd Snap2PDF
+
+# ビルド（バッチファイルを実行）
+build.bat
+```
+
+ビルドが完了すると `dist/KindlePDFConverter.exe` が生成されます。
+
+**注意:**
+- 初回ビルドには数分かかります
+- Python 3.10以上がインストールされている必要があります
+- 生成されたEXEファイルは `dist` フォルダ内にあります
+- EXEファイルは単体で動作し、Pythonのインストールは不要です
 
 ## 使い方
 
@@ -254,26 +272,46 @@ Snap2PDF/
 ├── main.py                          # エントリーポイント
 ├── requirements.txt                 # 依存パッケージ
 ├── README.md                        # このファイル
+├── build.bat                        # Windowsビルドスクリプト
+├── build.sh                         # Linux/Macビルドスクリプト
+├── kindle_pdf_converter.spec        # PyInstallerビルド設定
 └── kindle_pdf_tool/
     ├── __init__.py
     ├── gui/
     │   ├── __init__.py
     │   ├── main_window.py          # メインウィンドウ
-    │   └── components.py           # UIコンポーネント
+    │   ├── components.py           # UIコンポーネント
+    │   └── image_review_window.py  # 画像確認ウィンドウ
     ├── core/
     │   ├── __init__.py
     │   ├── capture.py              # スクリーンショット処理
     │   ├── automation.py           # 自動化ロジック
-    │   └── pdf_generator.py        # PDF生成・圧縮
+    │   └── pdf_generator.py        # PDF生成・分割
     └── utils/
         ├── __init__.py
         ├── config.py               # 設定管理
         └── logger.py               # ログ管理
 ```
 
+### EXEファイルのビルド方法
+
+**Windows:**
+1. リポジトリをクローン
+2. `build.bat` を実行
+3. `dist/KindlePDFConverter.exe` が生成されます
+
+**Linux/Mac:**
+1. リポジトリをクローン
+2. `./build.sh` を実行
+3. `dist/KindlePDFConverter` が生成されます
+
+**詳細:**
+- `kindle_pdf_converter.spec` ファイルでビルド設定をカスタマイズできます
+- アイコンを追加する場合は、`.spec` ファイルの `icon=None` を変更してください
+- ビルドには PyInstaller が使用されます
+
 ### 今後の予定
 
-- [ ] exe形式での配布
 - [ ] OCR機能の追加
 - [ ] キャプチャ範囲の選択機能
 - [ ] 自動ページ検出（最終ページ判定）

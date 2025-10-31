@@ -30,6 +30,7 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.spec
+!kindle_pdf_converter.spec  # Keep our build spec file
 
 # Installer logs
 pip-log.txt

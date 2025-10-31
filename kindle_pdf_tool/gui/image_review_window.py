@@ -1,9 +1,11 @@
 """Image review window for manual image selection and deletion."""
 
 import os
+import threading
 from pathlib import Path
 from typing import List, Optional
 from tkinter import messagebox
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import customtkinter as ctk
 from PIL import Image
 
@@ -35,6 +37,7 @@ class ImageReviewWindow(ctk.CTkToplevel):
         self.image_files: List[Path] = []
         self.selected_images: set = set()
         self.image_widgets: dict = {}  # Store widget references for fast deletion
+        self.loading_in_progress = False  # Track if images are being loaded
 
         # Window settings
         self.title("画像確認・削除")
@@ -118,6 +121,27 @@ class ImageReviewWindow(ctk.CTkToplevel):
             text_color="gray"
         ).pack(side="left")
 
+        # Progress bar frame
+        self.progress_frame = ctk.CTkFrame(main_container)
+        self.progress_frame.pack(fill="x", padx=5, pady=5)
+
+        self.progress_label = ctk.CTkLabel(
+            self.progress_frame,
+            text="画像を読み込み中...",
+            font=JP_FONT
+        )
+        self.progress_label.pack(pady=(5, 2))
+
+        self.progress_bar = ctk.CTkProgressBar(
+            self.progress_frame,
+            width=840
+        )
+        self.progress_bar.pack(padx=10, pady=(0, 5))
+        self.progress_bar.set(0)
+
+        # Hide progress initially
+        self.progress_frame.pack_forget()
+
         # Scrollable image grid
         self.scroll_frame = ctk.CTkScrollableFrame(
             main_container,
@@ -180,7 +204,7 @@ class ImageReviewWindow(ctk.CTkToplevel):
             # Update count
             self.count_label.configure(text=f"画像数: {len(self.image_files)}枚")
 
-            # Display images
+            # Display images in background thread
             self.display_images()
 
         except Exception as e:
@@ -188,77 +212,144 @@ class ImageReviewWindow(ctk.CTkToplevel):
             messagebox.showerror("エラー", f"画像の読み込みに失敗しました: {e}")
 
     def display_images(self):
-        """Display images in grid."""
-        # Clear existing widgets
+        """Start background thread to display images."""
+        if self.loading_in_progress:
+            return
+
+        self.loading_in_progress = True
+
+        # Show progress bar
+        self.progress_frame.pack(fill="x", padx=5, pady=5, before=self.scroll_frame)
+        self.progress_bar.set(0)
+        self.progress_label.configure(text=f"画像を読み込み中... 0/{len(self.image_files)}")
+
+        # Start background thread
+        thread = threading.Thread(target=self.display_images_threaded, daemon=True)
+        thread.start()
+
+    def display_images_threaded(self):
+        """Display images in grid using parallel processing."""
+        try:
+            # Clear existing widgets (on main thread)
+            self.after(0, self._clear_widgets)
+
+            columns = 4
+            thumbnail_size = (120, 160)
+            total_images = len(self.image_files)
+
+            # Helper function to create thumbnail
+            def create_thumbnail(idx_and_path):
+                idx, img_path = idx_and_path
+                try:
+                    img = Image.open(img_path)
+                    img.thumbnail(thumbnail_size, Image.Resampling.BILINEAR)
+                    return (idx, img_path, img, None)
+                except Exception as e:
+                    logger.error(f"Failed to load thumbnail {img_path}: {e}")
+                    return (idx, img_path, None, str(e))
+
+            # Process images in parallel (use 4 workers)
+            loaded_count = 0
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                # Submit all tasks
+                futures = {
+                    executor.submit(create_thumbnail, (idx, img_path)): (idx, img_path)
+                    for idx, img_path in enumerate(self.image_files)
+                }
+
+                # Process completed tasks
+                for future in as_completed(futures):
+                    idx, img_path, img, error = future.result()
+
+                    # Update UI on main thread
+                    self.after(0, self._add_image_widget, idx, img_path, img, error, thumbnail_size, columns)
+
+                    # Update progress
+                    loaded_count += 1
+                    progress = loaded_count / total_images
+                    self.after(0, self._update_progress, loaded_count, total_images, progress)
+
+            # Hide progress bar and configure grid
+            self.after(0, self._finalize_display, columns)
+
+        except Exception as e:
+            logger.error(f"Failed to display images: {e}")
+            self.after(0, lambda: messagebox.showerror("エラー", f"画像表示エラー: {e}"))
+
+        finally:
+            self.loading_in_progress = False
+
+    def _clear_widgets(self):
+        """Clear existing widgets."""
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
-
         self.image_widgets.clear()
 
-        # Create grid (4 columns)
-        columns = 4
-        thumbnail_size = (180, 240)
+    def _add_image_widget(self, idx, img_path, img, error, thumbnail_size, columns):
+        """Add single image widget to grid."""
+        row = idx // columns
+        col = idx % columns
 
-        for idx, img_path in enumerate(self.image_files):
-            row = idx // columns
-            col = idx % columns
+        # Create frame for each image
+        img_frame = ctk.CTkFrame(self.scroll_frame, width=140, height=220)
+        img_frame.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
 
-            # Create frame for each image
-            img_frame = ctk.CTkFrame(self.scroll_frame, width=200, height=300)
-            img_frame.grid(row=row, column=col, padx=5, pady=5, sticky="nsew")
+        # Store widget reference
+        self.image_widgets[img_path] = img_frame
 
-            # Store widget reference
-            self.image_widgets[img_path] = img_frame
+        # Page number label
+        page_num = self.extract_page_number(img_path)
+        page_label = ctk.CTkLabel(
+            img_frame,
+            text=f"ページ {page_num}",
+            font=JP_FONT_BOLD
+        )
+        page_label.pack(pady=(5, 2))
 
-            # Page number label
-            page_num = self.extract_page_number(img_path)
-            page_label = ctk.CTkLabel(
-                img_frame,
-                text=f"ページ {page_num}",
-                font=JP_FONT_BOLD
+        # Thumbnail or error
+        if img:
+            ctk_img = ctk.CTkImage(
+                light_image=img,
+                dark_image=img,
+                size=thumbnail_size
             )
-            page_label.pack(pady=(5, 2))
-
-            # Thumbnail
-            try:
-                img = Image.open(img_path)
-                # Use BILINEAR for 3x faster resizing (was LANCZOS)
-                img.thumbnail(thumbnail_size, Image.Resampling.BILINEAR)
-
-                # Convert to CTkImage
-                ctk_img = ctk.CTkImage(
-                    light_image=img,
-                    dark_image=img,
-                    size=thumbnail_size
-                )
-
-                img_label = ctk.CTkLabel(img_frame, image=ctk_img, text="")
-                img_label.pack(pady=2)
-
-            except Exception as e:
-                logger.error(f"Failed to load thumbnail {img_path}: {e}")
-                error_label = ctk.CTkLabel(
-                    img_frame,
-                    text="画像エラー",
-                    width=thumbnail_size[0],
-                    height=thumbnail_size[1]
-                )
-                error_label.pack(pady=2)
-
-            # Checkbox for selection
-            var = ctk.BooleanVar()
-            checkbox = ctk.CTkCheckBox(
+            img_label = ctk.CTkLabel(img_frame, image=ctk_img, text="")
+            img_label.pack(pady=2)
+        else:
+            error_label = ctk.CTkLabel(
                 img_frame,
-                text="削除",
-                variable=var,
-                command=lambda p=img_path, v=var: self.on_image_select(p, v),
-                font=JP_FONT
+                text="画像エラー",
+                width=thumbnail_size[0],
+                height=thumbnail_size[1]
             )
-            checkbox.pack(pady=(2, 5))
+            error_label.pack(pady=2)
 
+        # Checkbox for selection
+        var = ctk.BooleanVar()
+        checkbox = ctk.CTkCheckBox(
+            img_frame,
+            text="削除",
+            variable=var,
+            command=lambda p=img_path, v=var: self.on_image_select(p, v),
+            font=JP_FONT
+        )
+        checkbox.pack(pady=(2, 5))
+
+    def _update_progress(self, loaded_count, total_images, progress):
+        """Update progress bar."""
+        self.progress_bar.set(progress)
+        self.progress_label.configure(text=f"画像を読み込み中... {loaded_count}/{total_images}")
+
+    def _finalize_display(self, columns):
+        """Finalize display after loading complete."""
         # Configure grid weights
         for i in range(columns):
             self.scroll_frame.grid_columnconfigure(i, weight=1)
+
+        # Hide progress bar
+        self.progress_frame.pack_forget()
+
+        logger.info(f"Loaded {len(self.image_files)} images")
 
     def extract_page_number(self, img_path: Path) -> int:
         """Extract page number from filename."""

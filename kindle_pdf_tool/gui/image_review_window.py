@@ -218,8 +218,11 @@ class ImageReviewWindow(ctk.CTkToplevel):
 
         self.loading_in_progress = True
 
-        # Show progress bar
-        self.progress_frame.pack(fill="x", padx=5, pady=5, before=self.scroll_frame)
+        # Show progress bar by temporarily hiding scroll_frame
+        self.scroll_frame.pack_forget()
+        self.progress_frame.pack(fill="x", padx=5, pady=5)
+        self.scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
         self.progress_bar.set(0)
         self.progress_label.configure(text=f"画像を読み込み中... 0/{len(self.image_files)}")
 

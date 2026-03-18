@@ -29,6 +29,9 @@ class Config:
     target_size_enabled: bool = True
     target_size_mb: int = 50
 
+    # Capture behavior
+    hide_during_capture: bool = True
+
     # Output
     last_output_path: str = ""
 

@@ -169,6 +169,17 @@ class MainWindow(ctk.CTk):
         self.screenshot_interval_entry.pack(side="left", padx=(0, 3))
         ctk.CTkLabel(row4, text="秒", font=JP_FONT_SMALL).pack(side="left")
 
+        row4b = ctk.CTkFrame(capture_section, fg_color="transparent")
+        row4b.pack(fill="x", padx=10, pady=2)
+
+        self.hide_during_capture_var = ctk.BooleanVar(value=self.config.hide_during_capture)
+        ctk.CTkCheckBox(
+            row4b,
+            text="撮影中はこのウィンドウを非表示にする",
+            variable=self.hide_during_capture_var,
+            font=JP_FONT
+        ).pack(side="left")
+
         # === Output Directory ===
         output_section = CompactSection(main_frame, "保存先")
         output_section.pack(fill="x", padx=5, pady=3)
@@ -398,6 +409,7 @@ class MainWindow(ctk.CTk):
             screenshot_count=int(self.screenshot_count_entry.get()),
             screenshot_interval=float(self.screenshot_interval_entry.get()),
             save_mode="all",
+            hide_during_capture=self.hide_during_capture_var.get(),
             target_size_enabled=self.target_size_var.get(),
             target_size_mb=int(self.target_size_entry.get()),
             last_output_path=self.pdf_output_entry.get()
@@ -581,6 +593,11 @@ class MainWindow(ctk.CTk):
             self.update_screenshot_status("待機中...")
             time.sleep(config.initial_wait)
 
+            # Hide window during capture if enabled
+            if config.hide_during_capture:
+                self.after(0, self.iconify)
+                time.sleep(0.5)  # Wait for window to minimize
+
             self.start_time = time.time()
             page_count = config.total_pages - config.start_page + 1
 
@@ -606,6 +623,10 @@ class MainWindow(ctk.CTk):
                     self.kindle_automation.turn_page(config.direction)
                     time.sleep(config.page_wait)
 
+            # Restore window
+            if config.hide_during_capture:
+                self.after(0, self.deiconify)
+
             if not self.stop_requested:
                 self.update_screenshot_status("完了！")
 
@@ -621,6 +642,7 @@ class MainWindow(ctk.CTk):
 
         except Exception as e:
             logger.error(f"Screenshot error: {e}", exc_info=True)
+            self.after(0, self.deiconify)
             self.show_error(f"エラー: {e}")
 
         finally:

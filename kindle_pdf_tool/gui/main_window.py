@@ -84,6 +84,20 @@ class MainWindow(ctk.CTk):
         main_container = ctk.CTkFrame(self)
         main_container.pack(fill="both", expand=True, padx=8, pady=8)
 
+        # Always on top toggle button
+        self.always_on_top_var = ctk.BooleanVar(value=False)
+        self.topmost_btn = ctk.CTkButton(
+            main_container,
+            text="📌 常に最前面: OFF",
+            width=160,
+            height=26,
+            font=JP_FONT_SMALL,
+            fg_color="gray30",
+            hover_color="gray40",
+            command=self.toggle_always_on_top
+        )
+        self.topmost_btn.pack(anchor="e", padx=5, pady=(4, 0))
+
         # Tab view
         self.tabview = ctk.CTkTabview(main_container, width=704, height=784)
         self.tabview.pack(fill="both", expand=True)
@@ -770,3 +784,14 @@ class MainWindow(ctk.CTk):
         self.is_processing = False
         self.pdf_convert_btn.configure(state="normal")
         self.pdf_progress.reset()
+
+    def toggle_always_on_top(self):
+        """Toggle always-on-top window attribute."""
+        current = self.always_on_top_var.get()
+        new_state = not current
+        self.always_on_top_var.set(new_state)
+        self.wm_attributes("-topmost", new_state)
+        if new_state:
+            self.topmost_btn.configure(text="📌 常に最前面: ON", fg_color="#1a6b1a", hover_color="#1f821f")
+        else:
+            self.topmost_btn.configure(text="📌 常に最前面: OFF", fg_color="gray30", hover_color="gray40")

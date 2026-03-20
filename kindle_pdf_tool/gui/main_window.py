@@ -290,7 +290,19 @@ class MainWindow(ctk.CTk):
             state="disabled",
             font=JP_FONT
         )
-        self.open_folder_btn.pack(side="left")
+        self.open_folder_btn.pack(side="left", padx=(0, 5))
+
+        self.delete_images_btn = ctk.CTkButton(
+            row1,
+            text="🗑 削除",
+            width=70,
+            command=self.delete_all_images,
+            state="disabled",
+            font=JP_FONT,
+            fg_color="#8b1a1a",
+            hover_color="#a52020"
+        )
+        self.delete_images_btn.pack(side="left")
 
         row2 = ctk.CTkFrame(source_section, fg_color="transparent")
         row2.pack(fill="x", padx=10, pady=2)
@@ -444,6 +456,7 @@ class MainWindow(ctk.CTk):
             self.image_folder_entry.insert(0, directory)
             self.update_image_count(Path(directory))
             self.open_folder_btn.configure(state="normal")
+            self.delete_images_btn.configure(state="normal")
 
     def browse_pdf_output(self):
         """Browse for PDF output file."""
@@ -729,6 +742,7 @@ class MainWindow(ctk.CTk):
         self.image_folder_entry.insert(0, str(folder_path))
         self.update_image_count(folder_path)
         self.open_folder_btn.configure(state="normal")
+        self.delete_images_btn.configure(state="normal")
 
     def update_screenshot_status(self, message: str):
         """Update screenshot status label."""
@@ -784,6 +798,38 @@ class MainWindow(ctk.CTk):
         self.is_processing = False
         self.pdf_convert_btn.configure(state="normal")
         self.pdf_progress.reset()
+
+    def delete_all_images(self):
+        """Delete all PNG images in the selected folder."""
+        folder_path = self.image_folder_entry.get()
+        if not folder_path or not Path(folder_path).exists():
+            messagebox.showerror("エラー", "有効な画像フォルダを選択してください")
+            return
+
+        image_files = list(Path(folder_path).glob("*.png"))
+        if not image_files:
+            messagebox.showinfo("情報", "削除する画像がありません")
+            return
+
+        if not messagebox.askyesno(
+            "確認",
+            f"{len(image_files)}枚の画像をすべて削除しますか？\n\nフォルダ: {folder_path}\n\nこの操作は元に戻せません。"
+        ):
+            return
+
+        errors = []
+        for f in image_files:
+            try:
+                f.unlink()
+            except Exception as e:
+                errors.append(str(e))
+
+        if errors:
+            messagebox.showerror("エラー", f"一部の削除に失敗しました:\n" + "\n".join(errors))
+        else:
+            self.image_count_label.configure(text="画像数: 0枚（削除済み）", text_color="gray")
+            self.pdf_estimated_size_label.configure(text="💡 推定: -- MB", text_color="gray")
+            messagebox.showinfo("完了", f"{len(image_files)}枚の画像を削除しました")
 
     def toggle_always_on_top(self):
         """Toggle always-on-top window attribute."""

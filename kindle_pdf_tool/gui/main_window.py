@@ -48,7 +48,7 @@ class MainWindow(ctk.CTk):
 
         # Window settings
         self.title("Kindle PDF Converter v1.3")
-        self.geometry("720x800")
+        self.geometry("720x660")
         self.resizable(False, False)
 
         # Set theme
@@ -99,7 +99,7 @@ class MainWindow(ctk.CTk):
         self.topmost_btn.pack(anchor="e", padx=5, pady=(4, 0))
 
         # Tab view
-        self.tabview = ctk.CTkTabview(main_container, width=704, height=784)
+        self.tabview = ctk.CTkTabview(main_container, width=704, height=610)
         self.tabview.pack(fill="both", expand=True)
 
         # Add tabs
@@ -275,7 +275,7 @@ class MainWindow(ctk.CTk):
         row1 = ctk.CTkFrame(source_section, fg_color="transparent")
         row1.pack(fill="x", padx=10, pady=2)
 
-        self.image_folder_entry = ctk.CTkEntry(row1, width=480, font=JP_FONT)
+        self.image_folder_entry = ctk.CTkEntry(row1, width=430, font=JP_FONT)
         self.image_folder_entry.insert(0, "画像フォルダを選択")
         self.image_folder_entry.pack(side="left", padx=(0, 5))
 
